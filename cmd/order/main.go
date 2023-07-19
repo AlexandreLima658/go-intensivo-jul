@@ -2,11 +2,14 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/AlexandreLima658/go-intensivo-jul/internal/infra/database"
 	"github.com/AlexandreLima658/go-intensivo-jul/internal/usecase"
+	"github.com/AlexandreLima658/go-intensivo-jul/pkg/rabbitmq"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"os"
 )
 
@@ -30,14 +33,30 @@ func main() {
 	defer db.Close()
 	orderRepository := database.NewRepository(db)
 	uc := usecase.NewCalculateFinalPrice(orderRepository)
-	input := usecase.OrderInput{
-		ID:    "15",
-		Price: 25.0,
-		Tax:   1.0,
-	}
-	output, err := uc.Execute(input)
+	ch, err := rabbitmq.OpenChannel()
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(output)
+	defer ch.Close()
+	msgRabbitmqChannel := make(chan amqp.Delivery)
+	go rabbitmq.Consume(ch, msgRabbitmqChannel)
+	rabbitmqWorker(msgRabbitmqChannel, uc)
+}
+
+func rabbitmqWorker(msgChan chan amqp.Delivery, uc *usecase.CalculateFinalPrice) {
+	fmt.Println("Starting RabbitMQ Worker")
+	for msg := range msgChan {
+		var input usecase.OrderInput
+		err := json.Unmarshal(msg.Body, &input)
+		if err != nil {
+			panic(err)
+
+		}
+		output, err := uc.Execute(input)
+		if err != nil {
+			panic(err)
+
+		}
+		fmt.Println("Mensagem processada e salva no banco ", output)
+	}
 }
