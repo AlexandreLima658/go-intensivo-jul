@@ -1,4 +1,4 @@
-# Semana Go intensivo
+# Semana Go intensivo  :rocket:
 
 ## Objetivo
 Semana voltada para o aprendizado da 
